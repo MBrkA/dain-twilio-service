@@ -1,7 +1,7 @@
 import { ToolConfig } from "@dainprotocol/service-sdk";
 import { z } from "zod";
-import axios from "axios";
 import { AlertUIBuilder, TableUIBuilder } from "@dainprotocol/utils";
+import twilio from 'twilio';
 
 const getWhatsappMessagesConfig: ToolConfig = {
   id: "get-whatsapp-messages",
@@ -13,7 +13,7 @@ const getWhatsappMessagesConfig: ToolConfig = {
   output: z.object({
     messages: z.array(z.object({
       sid: z.string(),
-      from: z.string(),
+      from: z.string(), 
       body: z.string(),
       dateSent: z.string(),
       status: z.string()
@@ -29,21 +29,19 @@ const getWhatsappMessagesConfig: ToolConfig = {
         throw new Error("Missing Twilio credentials");
       }
 
-      const response = await axios.get(
-        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=${limit}`,
-        {
-          auth: {
-            username: accountSid,
-            password: authToken,
-          },
-        }
-      );
+      // Initialize Twilio client
+      const client = twilio(accountSid, authToken);
 
-      const messages = response.data.messages.map((msg: any) => ({
+      // Get messages using Twilio client
+      const messages = await client.messages.list({
+        limit: limit
+      });
+
+      const formattedMessages = messages.map(msg => ({
         sid: msg.sid,
         from: msg.from.replace('whatsapp:', ''),
         body: msg.body,
-        dateSent: msg.date_sent,
+        dateSent: msg.dateCreated.toISOString(),
         status: msg.status
       }));
 
@@ -54,12 +52,12 @@ const getWhatsappMessagesConfig: ToolConfig = {
           { key: "dateSent", header: "Date Sent", type: "text" },
           { key: "status", header: "Status", type: "text" }
         ])
-        .rows(messages)
+        .rows(formattedMessages)
         .build();
 
       return {
-        text: `Retrieved ${messages.length} WhatsApp messages`,
-        data: { messages },
+        text: `Retrieved ${formattedMessages.length} WhatsApp messages`,
+        data: { messages: formattedMessages },
         ui: tableUI
       };
 
