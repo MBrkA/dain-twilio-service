@@ -9,17 +9,20 @@ const getWhatsappMessagesConfig: ToolConfig = {
   description: "Retrieve received WhatsApp messages from Twilio",
   input: z.object({
     limit: z.number().optional().describe("Maximum number of messages to retrieve"),
+    from: z.string().optional().describe("Filter messages from this number (E.164 format)"),
+    to: z.string().optional().describe("Filter messages to this number (E.164 format)")
   }),
   output: z.object({
     messages: z.array(z.object({
       sid: z.string(),
       from: z.string(), 
+      to: z.string(),
       body: z.string(),
       dateSent: z.string(),
       status: z.string()
     }))
   }),
-  handler: async ({ limit = 10 }, agentInfo) => {
+  handler: async ({ limit = 10, from, to }, agentInfo) => {
     try {
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -32,14 +35,18 @@ const getWhatsappMessagesConfig: ToolConfig = {
       // Initialize Twilio client
       const client = twilio(accountSid, authToken);
 
-      // Get messages using Twilio client
-      const messages = await client.messages.list({
-        limit: limit
-      });
+      // Build filter options
+      const filterOptions: any = { limit };
+      if (from) filterOptions.from = `whatsapp:${from}`;
+      if (to) filterOptions.to = `whatsapp:${to}`;
+
+      // Get messages using Twilio client with filters
+      const messages = await client.messages.list(filterOptions);
 
       const formattedMessages = messages.map(msg => ({
         sid: msg.sid,
         from: msg.from.replace('whatsapp:', ''),
+        to: msg.to.replace('whatsapp:', ''),
         body: msg.body,
         dateSent: msg.dateCreated.toISOString(),
         status: msg.status
@@ -48,6 +55,7 @@ const getWhatsappMessagesConfig: ToolConfig = {
       const tableUI = new TableUIBuilder()
         .addColumns([
           { key: "from", header: "From", type: "text" },
+          { key: "to", header: "To", type: "text" },
           { key: "body", header: "Message", type: "text" },
           { key: "dateSent", header: "Date Sent", type: "text" },
           { key: "status", header: "Status", type: "text" }
